@@ -1,0 +1,54 @@
+name: quran-word
+
+on:
+  workflow_dispatch:   # يُشغَّل من cron-job.org
+
+permissions:
+  contents: write      # لحفظ history.json
+
+concurrency:
+  group: quran-word
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: System packages
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg libraqm0 libfribidi0 libharfbuzz0b
+
+      - run: pip install -r requirements.txt
+
+      - name: Check audio
+        run: python publish.py --check || true
+
+      - name: Build and publish
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+          RECITER: ${{ vars.RECITER }}
+          AUDIO_SOURCE: ${{ vars.AUDIO_SOURCE || 'auto' }}
+          ONLINE_RECITER: ${{ vars.ONLINE_RECITER || 'sudais' }}
+          PRIVACY: ${{ vars.PRIVACY || 'public' }}
+          MADE_FOR_KIDS: ${{ vars.MADE_FOR_KIDS || 'false' }}
+        run: python publish.py
+
+      - name: Save history
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add history.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: update history" && git push
+          fi
